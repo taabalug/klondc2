@@ -16,6 +16,9 @@
 
     <!-- LOGIN SCREEN -->
     <div id="username-page">
+        <div class="theme-toggle" id="login-theme-toggle" title="Toggle Dark/Light Mode"
+            style="position:absolute; top:20px; right:20px; font-size:30px; cursor:pointer; text-shadow:0 1px 5px rgba(255,255,255,0.5);">
+            🌙</div>
         <div class="username-page-container">
             <h1 class="title">Welcome back!</h1>
             <p class="subtitle">We're so excited to see you again!</p>
@@ -111,7 +114,9 @@
                 <div class="chat-input-wrapper">
                     <form id="messageForm" name="messageForm">
                         <div class="input-container">
-                            <div class="input-btn plus-btn">+</div>
+                            <label for="image-upload" class="input-btn plus-btn" title="Upload Image"
+                                style="margin-bottom:0; display:flex;">📷</label>
+                            <input type="file" id="image-upload" accept="image/*" style="display:none" />
                             <input type="text" id="message" placeholder="Message #general" autocomplete="off" />
                             <button type="submit" class="hidden-btn">Send</button>
                         </div>

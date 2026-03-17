@@ -19,16 +19,25 @@ var mobileOverlay = document.querySelector('#mobile-overlay');
 
 // Theme Toggle Logic
 var isDarkMode = false;
-themeToggle.addEventListener('click', function () {
+var loginThemeToggle = document.querySelector('#login-theme-toggle');
+
+function toggleTheme() {
     isDarkMode = !isDarkMode;
     if (isDarkMode) {
         document.documentElement.setAttribute('data-theme', 'dark');
         themeToggle.textContent = '☀️';
+        if (loginThemeToggle) loginThemeToggle.textContent = '☀️';
     } else {
         document.documentElement.removeAttribute('data-theme');
         themeToggle.textContent = '🌙';
+        if (loginThemeToggle) loginThemeToggle.textContent = '🌙';
     }
-});
+}
+
+themeToggle.addEventListener('click', toggleTheme);
+if (loginThemeToggle) {
+    loginThemeToggle.addEventListener('click', toggleTheme);
+}
 
 // Mobile UI Listeners
 hamburgerMenu.addEventListener('click', function () {
@@ -302,10 +311,22 @@ function onMessageReceived(payload) {
         headerElement.appendChild(nameElement);
         headerElement.appendChild(timeElement);
 
-        // Text
+        // Text or Image
         var textElement = document.createElement('div');
         textElement.classList.add('message-text');
-        textElement.textContent = message.content;
+
+        if (message.type === 'IMAGE') {
+            var imgElement = document.createElement('img');
+            imgElement.src = message.content;
+            imgElement.style.maxWidth = '300px';
+            imgElement.style.maxHeight = '300px';
+            imgElement.style.borderRadius = '5px';
+            imgElement.style.marginTop = '5px';
+            imgElement.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+            textElement.appendChild(imgElement);
+        } else {
+            textElement.textContent = message.content;
+        }
 
         contentWrapperElement.appendChild(headerElement);
         contentWrapperElement.appendChild(textElement);
@@ -327,6 +348,34 @@ function getAvatarColor(messageSender) {
     var index = Math.abs(hash % colors.length);
     return colors[index];
 }
+
+var imageUpload = document.querySelector('#image-upload');
+
+imageUpload.addEventListener('change', function (e) {
+    var file = e.target.files[0];
+    if (file && stompClient) {
+        // Validate file size (optional, prevent browser crash)
+        if (file.size > 5 * 1024 * 1024) {
+            alert("File is too large! Maximum 5MB allowed.");
+            imageUpload.value = '';
+            return;
+        }
+
+        var reader = new FileReader();
+        reader.onload = function (event) {
+            var base64String = event.target.result;
+            var chatMessage = {
+                sender: username,
+                content: base64String,
+                type: 'IMAGE',
+                channel: currentChannel
+            };
+            stompClient.send("/app/chat.sendMessage", {}, JSON.stringify(chatMessage));
+        };
+        reader.readAsDataURL(file);
+    }
+    imageUpload.value = '';
+});
 
 usernameForm.addEventListener('submit', connect, true)
 messageForm.addEventListener('submit', sendMessage, true)
