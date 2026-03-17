@@ -22,18 +22,27 @@
         <div class="username-page-container">
             <h1 class="title">Welcome back!</h1>
             <p class="subtitle">We're so excited to see you again!</p>
+            <div class="auth-tabs">
+                <span class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Log In</span>
+                <span class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Register</span>
+            </div>
             <form id="usernameForm" name="usernameForm">
                 <div class="form-group">
                     <label for="name">USERNAME <span style="color:#f23f42">*</span></label>
                     <input type="text" id="name" autocomplete="off" class="form-control" required />
                 </div>
                 <div class="form-group">
+                    <label for="authPassword">PASSWORD <span style="color:#888">(optional if no auth)</span></label>
+                    <input type="password" id="authPassword" autocomplete="off" class="form-control" />
+                </div>
+                <div class="form-group">
                     <label for="serverUrl">SERVER URL (Leave default for local)</label>
                     <input type="text" id="serverUrl" value="http://localhost:8080" autocomplete="off"
                         class="form-control" />
                 </div>
+                <div id="auth-error" style="color:#ED4245; font-size:12px; margin-bottom:10px; display:none;"></div>
                 <div class="form-group">
-                    <button type="submit" class="accent username-submit">Log In</button>
+                    <button type="submit" class="accent username-submit" id="auth-submit-btn">Log In</button>
                 </div>
             </form>
         </div>
@@ -98,9 +107,20 @@
                         <span class="hash">#</span> <span id="current-channel-title">general</span>
                     </div>
                     <div style="flex: 1;"></div>
+                    <div class="search-container" id="search-container">
+                        <input type="text" id="search-input" class="search-input hidden"
+                            placeholder="Search messages..." autocomplete="off" />
+                    </div>
+                    <div class="input-btn search-btn" id="search-btn" title="Search">🔍</div>
                     <div class="theme-toggle" id="theme-toggle" title="Toggle Dark/Light Mode">🌙</div>
                     <div class="members-toggle" id="members-toggle" title="Toggle Members">👥</div>
                 </header>
+
+                <!-- Context menu for messages -->
+                <div id="msg-context-menu" class="msg-context-menu hidden">
+                    <div class="ctx-item" id="ctx-edit">✏️ Edit Message</div>
+                    <div class="ctx-item" id="ctx-delete">🗑️ Delete Message</div>
+                </div>
 
                 <div class="chat-history" id="messageArea">
                     <!-- Messages will appear here -->
@@ -112,12 +132,16 @@
                 </div>
 
                 <div class="chat-input-wrapper">
+                    <div class="typing-indicator" id="typing-indicator"></div>
+                    <div class="emoji-picker-panel hidden" id="emoji-picker-panel"></div>
                     <form id="messageForm" name="messageForm">
                         <div class="input-container">
                             <label for="image-upload" class="input-btn plus-btn" title="Upload Image"
                                 style="margin-bottom:0; display:flex;">📷</label>
                             <input type="file" id="image-upload" accept="image/*" style="display:none" />
                             <input type="text" id="message" placeholder="Message #general" autocomplete="off" />
+                            <div class="input-btn voice-btn" id="voice-btn" title="Record Voice Note">🎤</div>
+                            <div class="input-btn emoji-btn" id="emoji-btn" title="Emoji">😊</div>
                             <button type="submit" class="hidden-btn">Send</button>
                         </div>
                     </form>

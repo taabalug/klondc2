@@ -96,9 +96,26 @@ var welcomeDesc = document.querySelector('#welcome-desc');
 var stompClient = null;
 var currentSubscription = null;
 var username = null;
+var userRole = 'USER';
 var userColor = '';
 var currentChannel = 'general';
 var knownChannels = ['general'];
+var authMode = 'login'; // 'login' or 'register'
+var voiceBtn = document.querySelector('#voice-btn');
+var mediaRecorder = null;
+var isRecording = false;
+var typingTimeout = null;
+var typingUsers = {};
+var typingIndicator = document.querySelector('#typing-indicator');
+var emojiBtn = document.querySelector('#emoji-btn');
+var emojiPanel = document.querySelector('#emoji-picker-panel');
+var searchBtn = document.querySelector('#search-btn');
+var searchInput = document.querySelector('#search-input');
+var contextMenu = document.querySelector('#msg-context-menu');
+var ctxEdit = document.querySelector('#ctx-edit');
+var ctxDelete = document.querySelector('#ctx-delete');
+var selectedMessageId = null;
+var selectedMessageElement = null;
 
 var colors = [
     '#5865F2', '#EB459E', '#ED4245', '#FEE75C',
@@ -106,29 +123,72 @@ var colors = [
 ];
 
 function connect(event) {
-    username = document.querySelector('#name').value.trim();
-    var serverUrl = serverUrlInput.value.trim() || 'http://localhost:8080';
+    event.preventDefault(); // Always prevent form submission first!
 
-    if (username) {
+    username = document.querySelector('#name').value.trim();
+    var password = document.querySelector('#authPassword').value;
+    var serverUrl = serverUrlInput.value.trim() || 'http://localhost:8080';
+    var authError = document.querySelector('#auth-error');
+    authError.style.display = 'none';
+
+    if (!username) {
+        authError.textContent = 'Username is required!';
+        authError.style.display = 'block';
+        return;
+    }
+
+    function proceedToChat(role) {
+        userRole = role || 'USER';
         usernamePage.classList.add('hidden');
         chatPage.classList.remove('hidden');
         displayUsername.textContent = username;
         userColor = getAvatarColor(username);
-
         document.querySelector('.user-profile .avatar').style.backgroundColor = userColor;
 
-        // Connect to the specified external or local server URL
         var socket = new SockJS(serverUrl + '/ws');
         stompClient = Stomp.over(socket);
-
-        // Add ngrok bypass header just in case
-        var headers = {
-            'ngrok-skip-browser-warning': 'true'
-        };
-
+        var headers = { 'ngrok-skip-browser-warning': 'true' };
         stompClient.connect(headers, onConnected, onError);
     }
-    event.preventDefault();
+
+    // If password is provided, try auth endpoints first
+    if (password) {
+        var endpoint = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+        fetch(serverUrl + endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true'
+            },
+            body: JSON.stringify({ username: username, password: password })
+        })
+            .then(function (r) {
+                if (!r.ok && r.status === 404) {
+                    // Auth endpoint doesn't exist on this backend - fall back to direct connect
+                    console.warn('Auth endpoint not found, connecting without auth...');
+                    proceedToChat('USER');
+                    return null;
+                }
+                return r.json();
+            })
+            .then(function (data) {
+                if (!data) return; // Already handled (404 fallback)
+                if (data.error) {
+                    authError.textContent = data.error;
+                    authError.style.display = 'block';
+                    return;
+                }
+                proceedToChat(data.role);
+            })
+            .catch(function (err) {
+                // Network error or non-JSON response - fall back to direct connect
+                console.warn('Auth failed, connecting directly:', err);
+                proceedToChat('USER');
+            });
+    } else {
+        // No password provided - connect directly (for backwards compatibility)
+        proceedToChat('USER');
+    }
 }
 
 function onConnected() {
@@ -286,6 +346,20 @@ function onMessageReceived(payload) {
             appendChannelToUI(chan);
         }
         return;
+    } else if (message.type === 'TYPING') {
+        // Show typing indicator
+        if (message.sender !== username && message.channel === currentChannel) {
+            typingUsers[message.sender] = Date.now();
+            updateTypingIndicator();
+            // Clear after 3 seconds if no more typing events
+            setTimeout(function () {
+                if (Date.now() - typingUsers[message.sender] >= 2900) {
+                    delete typingUsers[message.sender];
+                    updateTypingIndicator();
+                }
+            }, 3000);
+        }
+        return;
     }
 
     if (message.channel && message.channel !== currentChannel) {
@@ -363,16 +437,32 @@ function onMessageReceived(payload) {
         textElement.classList.add('message-text');
 
         if (message.type === 'IMAGE') {
-            var imgElement = document.createElement('img');
-            imgElement.src = message.content;
-            imgElement.style.maxWidth = '300px';
-            imgElement.style.maxHeight = '300px';
-            imgElement.style.borderRadius = '5px';
-            imgElement.style.marginTop = '5px';
-            imgElement.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
-            textElement.appendChild(imgElement);
+            var content = message.content || '';
+            if (content.startsWith('data:audio')) {
+                // Voice note - render as audio player
+                var audioEl = document.createElement('audio');
+                audioEl.controls = true;
+                audioEl.src = content;
+                audioEl.style.marginTop = '5px';
+                audioEl.style.maxWidth = '300px';
+                textElement.appendChild(audioEl);
+            } else {
+                // Image
+                var imgElement = document.createElement('img');
+                imgElement.src = content;
+                imgElement.style.maxWidth = '300px';
+                imgElement.style.maxHeight = '300px';
+                imgElement.style.borderRadius = '5px';
+                imgElement.style.marginTop = '5px';
+                imgElement.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+                imgElement.style.cursor = 'pointer';
+                imgElement.addEventListener('click', function () {
+                    window.open(imgElement.src, '_blank');
+                });
+                textElement.appendChild(imgElement);
+            }
         } else {
-            textElement.textContent = message.content;
+            textElement.innerHTML = parseMarkdown(message.content || '');
         }
 
         contentWrapperElement.appendChild(headerElement);
@@ -380,6 +470,22 @@ function onMessageReceived(payload) {
 
         messageElement.appendChild(avatarElement);
         messageElement.appendChild(contentWrapperElement);
+
+        // Store message ID for context menu (edit/delete)
+        if (message.id) {
+            messageElement.dataset.messageId = message.id;
+            messageElement.dataset.sender = message.sender;
+            messageElement.addEventListener('contextmenu', function (e) {
+                e.preventDefault();
+                if (message.sender === username) {
+                    selectedMessageId = message.id;
+                    selectedMessageElement = messageElement;
+                    contextMenu.style.top = e.clientY + 'px';
+                    contextMenu.style.left = e.clientX + 'px';
+                    contextMenu.classList.remove('hidden');
+                }
+            });
+        }
 
         messageArea.appendChild(messageElement);
     }
@@ -464,6 +570,183 @@ if (addServerBtn) {
 usernameForm.addEventListener('submit', connect, true)
 messageForm.addEventListener('submit', sendMessage, true)
 
+// ========== TYPING INDICATOR ==========
+function updateTypingIndicator() {
+    var names = Object.keys(typingUsers);
+    if (names.length === 0) {
+        typingIndicator.innerHTML = '';
+    } else if (names.length === 1) {
+        typingIndicator.innerHTML = '<strong>' + names[0] + '</strong> is typing<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>';
+    } else if (names.length <= 3) {
+        typingIndicator.innerHTML = '<strong>' + names.join(', ') + '</strong> are typing<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>';
+    } else {
+        typingIndicator.innerHTML = 'Several people are typing<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>';
+    }
+}
+
+messageInput.addEventListener('input', function () {
+    if (stompClient && messageInput.value.trim().length > 0) {
+        if (!typingTimeout) {
+            stompClient.send("/app/chat.typing", {}, JSON.stringify({
+                sender: username, type: 'TYPING', channel: currentChannel
+            }));
+        }
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(function () { typingTimeout = null; }, 2000);
+    }
+});
+
+// ========== MARKDOWN PARSER ==========
+function parseMarkdown(text) {
+    // Escape HTML first
+    var escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // Code blocks: `code`
+    escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // Bold: **text**
+    escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    // Italic: *text*
+    escaped = escaped.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    // Underline: __text__
+    escaped = escaped.replace(/__([^_]+)__/g, '<u>$1</u>');
+    // Strikethrough: ~~text~~
+    escaped = escaped.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+    return escaped;
+}
+
+// ========== EMOJI PICKER ==========
+var popularEmojis = [
+    '😀', '😂', '🥹', '😍', '🤩', '😎', '🥳', '😭',
+    '🤔', '🙄', '😱', '🤯', '🥺', '😤', '🤡', '👻',
+    '👍', '👎', '👏', '🙌', '💪', '🤝', '✌️', '🤞',
+    '❤️', '🔥', '⭐', '💯', '✅', '❌', '⚡', '💀',
+    '🎮', '🎵', '🎉', '🏆', '💎', '🚀', '🌟', '🍕',
+    '😈', '💩', '🐱', '🐶', '🦄', '🌈', '☀️', '🌙'
+];
+
+// Populate emoji grid
+popularEmojis.forEach(function (emoji) {
+    var span = document.createElement('span');
+    span.className = 'emoji-item';
+    span.textContent = emoji;
+    span.addEventListener('click', function () {
+        messageInput.value += emoji;
+        messageInput.focus();
+    });
+    emojiPanel.appendChild(span);
+});
+
+emojiBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    emojiPanel.classList.toggle('hidden');
+});
+
+// Close emoji panel when clicking elsewhere
+document.addEventListener('click', function (e) {
+    if (!emojiPanel.contains(e.target) && e.target !== emojiBtn) {
+        emojiPanel.classList.add('hidden');
+    }
+    // Also close context menu
+    if (!contextMenu.contains(e.target)) {
+        contextMenu.classList.add('hidden');
+    }
+});
+
+// ========== SEARCH ==========
+searchBtn.addEventListener('click', function () {
+    searchInput.classList.toggle('hidden');
+    if (!searchInput.classList.contains('hidden')) {
+        searchInput.focus();
+    }
+});
+
+var searchDebounce = null;
+searchInput.addEventListener('input', function () {
+    clearTimeout(searchDebounce);
+    var query = searchInput.value.trim();
+    if (query.length < 2) return;
+    searchDebounce = setTimeout(function () {
+        var serverUrl = serverUrlInput.value.trim() || 'http://localhost:8080';
+        fetch(serverUrl + '/api/messages/' + currentChannel + '/search?q=' + encodeURIComponent(query), {
+            headers: { 'ngrok-skip-browser-warning': 'true' }
+        })
+            .then(r => r.json())
+            .then(results => {
+                messageArea.innerHTML = '<div class="event-message">🔍 Search results for "' + query + '" (' + results.length + ' found)</div>';
+                results.forEach(msg => onMessageReceived({ body: JSON.stringify(msg) }));
+            })
+            .catch(err => console.error('Search error:', err));
+    }, 400);
+});
+
+searchInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+        searchInput.value = '';
+        searchInput.classList.add('hidden');
+        // Reload normal channel
+        subscribeToChannel(currentChannel);
+    }
+});
+
+// ========== CONTEXT MENU (EDIT / DELETE) ==========
+ctxDelete.addEventListener('click', function () {
+    if (selectedMessageId) {
+        var serverUrl = serverUrlInput.value.trim() || 'http://localhost:8080';
+        fetch(serverUrl + '/api/messages/' + selectedMessageId, {
+            method: 'DELETE',
+            headers: { 'ngrok-skip-browser-warning': 'true' }
+        }).then(function () {
+            if (selectedMessageElement) selectedMessageElement.remove();
+            contextMenu.classList.add('hidden');
+        }).catch(err => console.error('Delete error:', err));
+    }
+});
+
+ctxEdit.addEventListener('click', function () {
+    if (selectedMessageId && selectedMessageElement) {
+        var textEl = selectedMessageElement.querySelector('.message-text');
+        var oldText = textEl.textContent;
+        var newText = prompt('Edit message:', oldText);
+        if (newText !== null && newText.trim().length > 0) {
+            var serverUrl = serverUrlInput.value.trim() || 'http://localhost:8080';
+            fetch(serverUrl + '/api/messages/' + selectedMessageId, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': 'true'
+                },
+                body: JSON.stringify({ content: newText.trim() })
+            }).then(r => r.json())
+                .then(function (updated) {
+                    textEl.innerHTML = parseMarkdown(updated.content) + ' <span style="font-size:10px;color:var(--text-muted);">(edited)</span>';
+                }).catch(err => console.error('Edit error:', err));
+        }
+        contextMenu.classList.add('hidden');
+    }
+});
+
+// ========== PRIVATE MESSAGES (DMs) ==========
+function startDM(targetUser) {
+    if (targetUser === username) return;
+    // Create a unique DM channel name (alphabetical order for consistency)
+    var users = [username, targetUser].sort();
+    var dmChannel = 'dm-' + users[0] + '-' + users[1];
+
+    if (!knownChannels.includes(dmChannel)) {
+        knownChannels.push(dmChannel);
+        var div = document.createElement('div');
+        div.className = 'channel dm-channel';
+        div.innerHTML = '<span class="hash"></span> ' + targetUser;
+        div.onclick = function () { switchChannel(dmChannel); };
+        channelsListContainer.appendChild(div);
+
+        // Tell backend
+        stompClient.send("/app/chat.createChannel", {}, JSON.stringify({
+            sender: username, channel: dmChannel, type: 'CHANNEL_CREATE'
+        }));
+    }
+    switchChannel(dmChannel);
+}
+
 function updateMembersList(usersList) {
     membersListContainer.innerHTML = '';
     onlineCount.textContent = usersList.length;
@@ -483,6 +766,77 @@ function updateMembersList(usersList) {
 
         memberDiv.appendChild(avatar);
         memberDiv.appendChild(nameSpan);
+
+        // Fetch user role and add badge
+        var serverUrl = serverUrlInput.value.trim() || 'http://localhost:8080';
+        (function (mDiv, uName) {
+            fetch(serverUrl + '/api/auth/role?username=' + encodeURIComponent(uName), {
+                headers: { 'ngrok-skip-browser-warning': 'true' }
+            }).then(r => r.json()).then(data => {
+                if (data.role && data.role !== 'USER') {
+                    var badge = document.createElement('span');
+                    badge.className = 'role-badge ' + data.role.toLowerCase();
+                    badge.textContent = data.role;
+                    mDiv.querySelector('.member-name').appendChild(badge);
+                }
+            }).catch(() => { });
+        })(memberDiv, user);
+
+        memberDiv.title = 'Click to send DM to ' + user;
+        memberDiv.addEventListener('click', function () { startDM(user); });
         membersListContainer.appendChild(memberDiv);
     });
 }
+
+// ========== AUTH TAB SWITCHING ==========
+window.switchAuthTab = function (mode) {
+    authMode = mode;
+    document.querySelector('#tab-login').classList.toggle('active', mode === 'login');
+    document.querySelector('#tab-register').classList.toggle('active', mode === 'register');
+    document.querySelector('#auth-submit-btn').textContent = mode === 'login' ? 'Log In' : 'Register';
+    document.querySelector('#auth-error').style.display = 'none';
+};
+
+// ========== VOICE RECORDING ==========
+voiceBtn.addEventListener('click', function () {
+    if (!isRecording) {
+        // Start recording
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(function (stream) {
+                mediaRecorder = new MediaRecorder(stream);
+                var chunks = [];
+                mediaRecorder.ondataavailable = function (e) { chunks.push(e.data); };
+                mediaRecorder.onstop = function () {
+                    var blob = new Blob(chunks, { type: 'audio/webm' });
+                    var reader = new FileReader();
+                    reader.onload = function (ev) {
+                        var chatMessage = {
+                            sender: username,
+                            content: ev.target.result,
+                            type: 'IMAGE', // Reuse IMAGE type for audio (base64 data)
+                            channel: currentChannel
+                        };
+                        stompClient.send("/app/chat.sendMessage", {}, JSON.stringify(chatMessage));
+                    };
+                    reader.readAsDataURL(blob);
+                    stream.getTracks().forEach(t => t.stop());
+                };
+                mediaRecorder.start();
+                isRecording = true;
+                voiceBtn.classList.add('recording');
+                voiceBtn.textContent = '⏹️';
+            })
+            .catch(function (err) {
+                alert('Microphone access denied or unavailable.');
+                console.error('Mic error:', err);
+            });
+    } else {
+        // Stop recording
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        isRecording = false;
+        voiceBtn.classList.remove('recording');
+        voiceBtn.textContent = '🎤';
+    }
+});
