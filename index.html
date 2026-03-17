@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+    <title>Discord Clone</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <noscript>
+        <h2>Sorry! Your browser doesn't support Javascript</h2>
+    </noscript>
+
+    <!-- LOGIN SCREEN -->
+    <div id="username-page">
+        <div class="username-page-container">
+            <h1 class="title">Welcome back!</h1>
+            <p class="subtitle">We're so excited to see you again!</p>
+            <form id="usernameForm" name="usernameForm">
+                <div class="form-group">
+                    <label for="name">USERNAME <span style="color:#f23f42">*</span></label>
+                    <input type="text" id="name" autocomplete="off" class="form-control" required />
+                </div>
+                <div class="form-group">
+                    <label for="serverUrl">SERVER URL (Leave default for local)</label>
+                    <input type="text" id="serverUrl" value="http://localhost:8080" autocomplete="off"
+                        class="form-control" />
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="accent username-submit">Log In</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- APP SCREEN -->
+    <div id="chat-page" class="hidden">
+        <div class="app-layout">
+
+            <!-- Servers Sidebar (Skinny) -->
+            <nav class="servers-sidebar">
+                <div class="server-icon active">
+                    <img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png"
+                        alt="Home">
+                </div>
+                <div class="server-separator"></div>
+                <div class="server-icon">
+                    <span>J</span>
+                </div>
+                <div class="server-icon add-server">
+                    <span>+</span>
+                </div>
+            </nav>
+
+            <!-- Channels Sidebar -->
+            <div class="channels-sidebar">
+                <div class="channels-header">
+                    <h2>Server Name</h2>
+                </div>
+                <div class="channels-list">
+                    <div class="channel-category"
+                        style="display:flex; justify-content: space-between; align-items:center;">
+                        <h3>TEXT CHANNELS</h3>
+                        <div id="add-channel-btn"
+                            style="cursor:pointer; color:var(--text-muted); font-size:18px; padding-right:10px;"
+                            title="Create Channel">+</div>
+                    </div>
+                    <!-- Interactive Channels List -->
+                    <div id="channels-list-container">
+                        <div class="channel active" onclick="switchChannel('general')">
+                            <span class="hash">#</span> general
+                        </div>
+                    </div>
+                </div>
+                <div class="user-profile">
+                    <div class="avatar"></div>
+                    <div class="user-details">
+                        <div class="username" id="display-username">User</div>
+                        <div class="status">Online</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Area -->
+            <main class="chat-area">
+                <header class="chat-header">
+                    <div class="chat-title">
+                        <span class="hash">#</span> <span id="current-channel-title">general</span>
+                    </div>
+                </header>
+
+                <div class="chat-history" id="messageArea">
+                    <!-- Messages will appear here -->
+                    <div class="welcome-message">
+                        <div class="welcome-icon">#</div>
+                        <h1 id="welcome-title">Welcome to #general!</h1>
+                        <p id="welcome-desc">This is the start of the #general channel.</p>
+                    </div>
+                </div>
+
+                <div class="chat-input-wrapper">
+                    <form id="messageForm" name="messageForm">
+                        <div class="input-container">
+                            <div class="input-btn plus-btn">+</div>
+                            <input type="text" id="message" placeholder="Message #general" autocomplete="off" />
+                            <button type="submit" class="hidden-btn">Send</button>
+                        </div>
+                    </form>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.1.4/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
