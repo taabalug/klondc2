@@ -122,6 +122,18 @@
                     <div class="ctx-item" id="ctx-delete">🗑️ Delete Message</div>
                 </div>
 
+                <!-- Custom Edit Modal -->
+                <div id="edit-modal-overlay" class="edit-modal-overlay hidden">
+                    <div class="edit-modal">
+                        <h3>Edit Message</h3>
+                        <textarea id="edit-modal-input" class="edit-modal-input" rows="3"></textarea>
+                        <div class="edit-modal-buttons">
+                            <button class="edit-modal-btn cancel" id="edit-modal-cancel">Cancel</button>
+                            <button class="edit-modal-btn save" id="edit-modal-save">Save</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="chat-history" id="messageArea">
                     <!-- Messages will appear here -->
                     <div class="welcome-message">

@@ -144,6 +144,8 @@ function connect(event) {
         displayUsername.textContent = username;
         userColor = getAvatarColor(username);
         document.querySelector('.user-profile .avatar').style.backgroundColor = userColor;
+        // Store serverUrl globally for later use
+        window._serverUrl = serverUrl;
 
         var socket = new SockJS(serverUrl + '/ws');
         stompClient = Stomp.over(socket);
@@ -186,8 +188,30 @@ function connect(event) {
                 proceedToChat('USER');
             });
     } else {
-        // No password provided - connect directly (for backwards compatibility)
-        proceedToChat('USER');
+        // No password - check if username is registered (requires password)
+        fetch(serverUrl + '/api/auth/role?username=' + encodeURIComponent(username), {
+            headers: { 'ngrok-skip-browser-warning': 'true' }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                // If we get a response, the endpoint exists — check if user is registered
+                // We need a dedicated check endpoint. For now, use /api/auth/check
+                return fetch(serverUrl + '/api/auth/check?username=' + encodeURIComponent(username), {
+                    headers: { 'ngrok-skip-browser-warning': 'true' }
+                }).then(function (r2) { return r2.json(); });
+            })
+            .then(function (checkData) {
+                if (checkData.exists === 'true' || checkData.exists === true) {
+                    authError.textContent = 'This username is registered. Please enter the password!';
+                    authError.style.display = 'block';
+                } else {
+                    proceedToChat('USER');
+                }
+            })
+            .catch(function () {
+                // Auth endpoint doesn't exist - connect directly
+                proceedToChat('USER');
+            });
     }
 }
 
@@ -701,26 +725,57 @@ ctxDelete.addEventListener('click', function () {
     }
 });
 
+var editModalOverlay = document.querySelector('#edit-modal-overlay');
+var editModalInput = document.querySelector('#edit-modal-input');
+var editModalSave = document.querySelector('#edit-modal-save');
+var editModalCancel = document.querySelector('#edit-modal-cancel');
+
 ctxEdit.addEventListener('click', function () {
     if (selectedMessageId && selectedMessageElement) {
         var textEl = selectedMessageElement.querySelector('.message-text');
-        var oldText = textEl.textContent;
-        var newText = prompt('Edit message:', oldText);
-        if (newText !== null && newText.trim().length > 0) {
-            var serverUrl = serverUrlInput.value.trim() || 'http://localhost:8080';
-            fetch(serverUrl + '/api/messages/' + selectedMessageId, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'ngrok-skip-browser-warning': 'true'
-                },
-                body: JSON.stringify({ content: newText.trim() })
-            }).then(r => r.json())
-                .then(function (updated) {
-                    textEl.innerHTML = parseMarkdown(updated.content) + ' <span style="font-size:10px;color:var(--text-muted);">(edited)</span>';
-                }).catch(err => console.error('Edit error:', err));
-        }
+        var oldText = textEl.textContent.replace(/\(edited\)$/, '').trim();
+        editModalInput.value = oldText;
+        editModalOverlay.classList.remove('hidden');
+        editModalInput.focus();
         contextMenu.classList.add('hidden');
+    }
+});
+
+editModalSave.addEventListener('click', function () {
+    var newText = editModalInput.value.trim();
+    if (newText.length > 0 && selectedMessageId && selectedMessageElement) {
+        var serverUrl = serverUrlInput.value.trim() || 'http://localhost:8080';
+        var textEl = selectedMessageElement.querySelector('.message-text');
+        fetch(serverUrl + '/api/messages/' + selectedMessageId, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true'
+            },
+            body: JSON.stringify({ content: newText })
+        }).then(function (r) { return r.json(); })
+            .then(function (updated) {
+                textEl.innerHTML = parseMarkdown(updated.content) + ' <span style="font-size:10px;color:var(--text-muted);">(edited)</span>';
+            }).catch(function (err) { console.error('Edit error:', err); });
+    }
+    editModalOverlay.classList.add('hidden');
+});
+
+editModalCancel.addEventListener('click', function () {
+    editModalOverlay.classList.add('hidden');
+});
+
+editModalOverlay.addEventListener('click', function (e) {
+    if (e.target === editModalOverlay) editModalOverlay.classList.add('hidden');
+});
+
+editModalInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        editModalSave.click();
+    }
+    if (e.key === 'Escape') {
+        editModalOverlay.classList.add('hidden');
     }
 });
 
