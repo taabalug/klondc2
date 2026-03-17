@@ -40,6 +40,9 @@
     <div id="chat-page" class="hidden">
         <div class="app-layout">
 
+            <!-- Mobile Overlay -->
+            <div id="mobile-overlay" class="hidden"></div>
+
             <!-- Servers Sidebar (Skinny) -->
             <nav class="servers-sidebar">
                 <div class="server-icon active">
@@ -87,9 +90,12 @@
             <!-- Chat Area -->
             <main class="chat-area">
                 <header class="chat-header">
+                    <div class="hamburger-menu" id="hamburger-menu" title="Menu">☰</div>
                     <div class="chat-title">
                         <span class="hash">#</span> <span id="current-channel-title">general</span>
                     </div>
+                    <div style="flex: 1;"></div>
+                    <div class="members-toggle" id="members-toggle" title="Toggle Members">👥</div>
                 </header>
 
                 <div class="chat-history" id="messageArea">
@@ -111,6 +117,16 @@
                     </form>
                 </div>
             </main>
+
+            <!-- Members Sidebar -->
+            <aside class="members-sidebar" id="members-sidebar">
+                <div class="members-header">
+                    <h3>ONLINE — <span id="online-count">1</span></h3>
+                </div>
+                <div class="members-list" id="members-list-container">
+                    <!-- Active users will be injected here -->
+                </div>
+            </aside>
         </div>
     </div>
 

@@ -9,6 +9,37 @@ var messageArea = document.querySelector('#messageArea');
 var serverUrlInput = document.querySelector('#serverUrl');
 var displayUsername = document.querySelector('#display-username');
 
+// Mobile and Members Sidebar Elements
+var membersListContainer = document.querySelector('#members-list-container');
+var onlineCount = document.querySelector('#online-count');
+var hamburgerMenu = document.querySelector('#hamburger-menu');
+var membersToggle = document.querySelector('#members-toggle');
+var mobileOverlay = document.querySelector('#mobile-overlay');
+
+// Mobile UI Listeners
+hamburgerMenu.addEventListener('click', function () {
+    document.body.classList.toggle('sidebar-open');
+    if (document.body.classList.contains('sidebar-open')) {
+        document.body.classList.remove('members-open');
+        mobileOverlay.classList.remove('hidden');
+    } else {
+        mobileOverlay.classList.add('hidden');
+    }
+});
+membersToggle.addEventListener('click', function () {
+    document.body.classList.toggle('members-open');
+    if (document.body.classList.contains('members-open')) {
+        document.body.classList.remove('sidebar-open');
+        mobileOverlay.classList.remove('hidden');
+    } else {
+        mobileOverlay.classList.add('hidden');
+    }
+});
+mobileOverlay.addEventListener('click', function () {
+    document.body.classList.remove('sidebar-open', 'members-open');
+    mobileOverlay.classList.add('hidden');
+});
+
 // Channel elements
 var channelsListContainer = document.querySelector('#channels-list-container');
 var addChannelBtn = document.querySelector('#add-channel-btn');
@@ -55,6 +86,25 @@ function connect(event) {
 }
 
 function onConnected() {
+    var serverUrl = serverUrlInput.value.trim() || 'http://localhost:8080';
+    var headers = { 'ngrok-skip-browser-warning': 'true' };
+
+    // Subscribe to public channel for global events
+    stompClient.subscribe('/topic/public', onMessageReceived);
+
+    // Fetch existing channels
+    fetch(serverUrl + '/api/channels', { headers: headers })
+        .then(response => response.json())
+        .then(channels => {
+            channels.forEach(chan => {
+                if (chan && !knownChannels.includes(chan) && chan !== 'public') {
+                    knownChannels.push(chan);
+                    appendChannelToUI(chan);
+                }
+            });
+        })
+        .catch(error => console.error('Error fetching channels:', error));
+
     subscribeToChannel(currentChannel);
 }
 
@@ -108,23 +158,32 @@ window.switchChannel = function (channel) {
     if (channel !== currentChannel) {
         subscribeToChannel(channel);
     }
+    // Close sidebar on mobile
+    if (window.innerWidth <= 768) {
+        document.body.classList.remove('sidebar-open');
+        mobileOverlay.classList.add('hidden');
+    }
 };
+
+function appendChannelToUI(newChannel) {
+    var div = document.createElement('div');
+    div.className = 'channel';
+    div.innerHTML = '<span class="hash">#</span> ' + newChannel;
+    div.onclick = function () { switchChannel(newChannel); };
+    channelsListContainer.appendChild(div);
+}
 
 addChannelBtn.addEventListener('click', function () {
     var newChannel = prompt("Enter new channel name:");
     if (newChannel && newChannel.trim().length > 0) {
         newChannel = newChannel.trim().toLowerCase().replace(/\s+/g, '-');
+
         if (!knownChannels.includes(newChannel)) {
-            knownChannels.push(newChannel);
-            var div = document.createElement('div');
-            div.className = 'channel';
-            div.innerHTML = '<span class="hash">#</span> ' + newChannel;
-            div.onclick = function () { switchChannel(newChannel); };
-            channelsListContainer.appendChild(div);
-            switchChannel(newChannel);
-        } else {
-            switchChannel(newChannel);
+            // Tell backend to broadcast new channel globally
+            stompClient.send("/app/chat.createChannel", {}, JSON.stringify({ sender: username, channel: newChannel, type: 'CHANNEL_CREATE' }));
         }
+
+        switchChannel(newChannel);
     }
 });
 
@@ -170,6 +229,18 @@ function sendMessage(event) {
 
 function onMessageReceived(payload) {
     var message = JSON.parse(payload.body);
+
+    if (message.type === 'USERS_LIST') {
+        updateMembersList(message.activeUsers);
+        return;
+    } else if (message.type === 'CHANNEL_CREATE') {
+        var chan = message.channel;
+        if (!knownChannels.includes(chan)) {
+            knownChannels.push(chan);
+            appendChannelToUI(chan);
+        }
+        return;
+    }
 
     if (message.channel !== currentChannel) {
         return; // Ignore messages from other channels if they somehow arrive
@@ -245,3 +316,26 @@ function getAvatarColor(messageSender) {
 
 usernameForm.addEventListener('submit', connect, true)
 messageForm.addEventListener('submit', sendMessage, true)
+
+function updateMembersList(usersList) {
+    membersListContainer.innerHTML = '';
+    onlineCount.textContent = usersList.length;
+
+    usersList.forEach(user => {
+        var memberDiv = document.createElement('div');
+        memberDiv.className = 'member-item';
+
+        var avatar = document.createElement('div');
+        avatar.className = 'member-avatar';
+        avatar.style.backgroundColor = getAvatarColor(user);
+        avatar.textContent = user[0].toUpperCase();
+
+        var nameSpan = document.createElement('div');
+        nameSpan.className = 'member-name';
+        nameSpan.textContent = user;
+
+        memberDiv.appendChild(avatar);
+        memberDiv.appendChild(nameSpan);
+        membersListContainer.appendChild(memberDiv);
+    });
+}
