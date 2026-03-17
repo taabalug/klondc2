@@ -14,7 +14,21 @@ var membersListContainer = document.querySelector('#members-list-container');
 var onlineCount = document.querySelector('#online-count');
 var hamburgerMenu = document.querySelector('#hamburger-menu');
 var membersToggle = document.querySelector('#members-toggle');
+var themeToggle = document.querySelector('#theme-toggle');
 var mobileOverlay = document.querySelector('#mobile-overlay');
+
+// Theme Toggle Logic
+var isDarkMode = false;
+themeToggle.addEventListener('click', function () {
+    isDarkMode = !isDarkMode;
+    if (isDarkMode) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        themeToggle.textContent = '☀️';
+    } else {
+        document.documentElement.removeAttribute('data-theme');
+        themeToggle.textContent = '🌙';
+    }
+});
 
 // Mobile UI Listeners
 hamburgerMenu.addEventListener('click', function () {
