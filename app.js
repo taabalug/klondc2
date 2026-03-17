@@ -147,6 +147,15 @@ function connect(event) {
         // Store serverUrl globally for later use
         window._serverUrl = serverUrl;
 
+        // Show/hide admin panel based on role
+        if (adminPanelToggle) {
+            if (userRole === 'ADMIN') {
+                adminPanelToggle.classList.remove('hidden');
+            } else {
+                adminPanelToggle.classList.add('hidden');
+            }
+        }
+
         var socket = new SockJS(serverUrl + '/ws');
         stompClient = Stomp.over(socket);
         var headers = { 'ngrok-skip-browser-warning': 'true' };
