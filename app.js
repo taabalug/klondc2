@@ -44,7 +44,12 @@ function connect(event) {
         var socket = new SockJS(serverUrl + '/ws');
         stompClient = Stomp.over(socket);
 
-        stompClient.connect({}, onConnected, onError);
+        // Add ngrok bypass header just in case
+        var headers = {
+            'ngrok-skip-browser-warning': 'true'
+        };
+
+        stompClient.connect(headers, onConnected, onError);
     }
     event.preventDefault();
 }
@@ -75,7 +80,23 @@ function subscribeToChannel(channel) {
     // Subscribe to the new Channel Topic
     currentSubscription = stompClient.subscribe('/topic/' + channel, onMessageReceived);
 
-    // Tell server you joined this channel
+    // Fetch history from database
+    var serverUrl = serverUrlInput.value.trim() || 'http://localhost:8080';
+    fetch(serverUrl + '/api/messages/' + channel, {
+        headers: {
+            'ngrok-skip-browser-warning': 'true'
+        }
+    })
+        .then(response => response.json())
+        .then(messages => {
+            messages.forEach(msg => {
+                // Re-use our rendering logic but pass it artificially as a payload
+                onMessageReceived({ body: JSON.stringify(msg) });
+            });
+        })
+        .catch(error => console.error('Error fetching history:', error));
+
+    // Tell server you joined this channel (Optional now, but we'll keep it)
     stompClient.send("/app/chat.addUser",
         {},
         JSON.stringify({ sender: username, type: 'JOIN', channel: channel })
