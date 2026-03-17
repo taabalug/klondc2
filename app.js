@@ -422,8 +422,15 @@ function onMessageReceived(payload) {
         // Avatar
         var avatarElement = document.createElement('div');
         avatarElement.classList.add('message-avatar');
-        avatarElement.style.backgroundColor = getAvatarColor(message.sender);
-        avatarElement.textContent = message.sender ? message.sender[0].toUpperCase() : '?';
+        if (message.senderAvatarUrl) {
+            avatarElement.style.backgroundImage = 'url(' + message.senderAvatarUrl + ')';
+            avatarElement.style.backgroundSize = 'cover';
+            avatarElement.style.backgroundPosition = 'center';
+            avatarElement.style.backgroundColor = 'transparent';
+        } else {
+            avatarElement.style.backgroundColor = message.senderColor || getAvatarColor(message.sender);
+            avatarElement.textContent = message.sender ? message.sender[0].toUpperCase() : '?';
+        }
 
         // Content Wrapper
         var contentWrapperElement = document.createElement('div');
@@ -435,7 +442,7 @@ function onMessageReceived(payload) {
 
         var nameElement = document.createElement('span');
         nameElement.classList.add('message-author');
-        nameElement.style.color = getAvatarColor(message.sender);
+        nameElement.style.color = message.senderColor || getAvatarColor(message.sender);
         nameElement.textContent = message.sender;
 
         var timeElement = document.createElement('span');
@@ -895,3 +902,249 @@ voiceBtn.addEventListener('click', function () {
         voiceBtn.textContent = '🎤';
     }
 });
+
+// ========== SETTINGS MODAL ==========
+var settingsModalOverlay = document.querySelector('#settings-modal-overlay');
+var settingsToggle = document.querySelector('#settings-toggle');
+var settingsCancel = document.querySelector('#settings-modal-cancel');
+var settingsSave = document.querySelector('#settings-modal-save');
+var settingsAvatarPreview = document.querySelector('#settings-avatar-preview');
+var settingsAvatarInput = document.querySelector('#settings-avatar-input');
+var settingsColorInput = document.querySelector('#settings-color-input');
+var settingsPasswordInput = document.querySelector('#settings-password-input');
+
+var currentAvatarBase64 = null;
+
+if (settingsToggle) {
+    settingsToggle.addEventListener('click', function () {
+        var serverUrl = window._serverUrl || 'http://localhost:8080';
+        fetch(serverUrl + '/api/auth/profile?username=' + encodeURIComponent(username), {
+            headers: { 'ngrok-skip-browser-warning': 'true' }
+        }).then(r => {
+            if (r.ok) return r.json();
+            throw new Error('Profile fetch failed');
+        }).then(profile => {
+            // Populate fields
+            if (profile.avatarUrl) {
+                currentAvatarBase64 = profile.avatarUrl;
+                settingsAvatarPreview.style.backgroundImage = 'url(' + profile.avatarUrl + ')';
+                settingsAvatarPreview.textContent = '';
+            } else {
+                currentAvatarBase64 = null;
+                settingsAvatarPreview.style.backgroundImage = 'none';
+                settingsAvatarPreview.style.backgroundColor = profile.color || getAvatarColor(username);
+                settingsAvatarPreview.textContent = username[0].toUpperCase();
+            }
+            if (profile.color) {
+                settingsColorInput.value = profile.color;
+            } else {
+                settingsColorInput.value = getAvatarColor(username);
+            }
+            settingsPasswordInput.value = '';
+            settingsModalOverlay.classList.remove('hidden');
+        }).catch(e => {
+            alert('Could not load profile. Are you logged in?');
+        });
+    });
+}
+
+if (settingsCancel) {
+    settingsCancel.addEventListener('click', () => settingsModalOverlay.classList.add('hidden'));
+}
+
+if (settingsAvatarInput) {
+    settingsAvatarInput.addEventListener('change', function (e) {
+        var file = e.target.files[0];
+        if (!file) return;
+
+        var reader = new FileReader();
+        reader.onload = function (evt) {
+            var img = new Image();
+            img.onload = function () {
+                var canvas = document.createElement('canvas');
+                var ctx = canvas.getContext('2d');
+                var maxSize = 256;
+                var ratio = Math.min(maxSize / img.width, maxSize / img.height);
+                canvas.width = img.width * ratio;
+                canvas.height = img.height * ratio;
+
+                // Crop to circle approach by drawing in center
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                currentAvatarBase64 = canvas.toDataURL('image/jpeg', 0.85);
+
+                settingsAvatarPreview.style.backgroundImage = 'url(' + currentAvatarBase64 + ')';
+                settingsAvatarPreview.textContent = '';
+            };
+            img.src = evt.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+if (settingsSave) {
+    settingsSave.addEventListener('click', function () {
+        var serverUrl = window._serverUrl || 'http://localhost:8080';
+        var payload = {
+            username: username,
+            color: settingsColorInput.value,
+            avatarUrl: currentAvatarBase64
+        };
+        if (settingsPasswordInput.value.trim().length > 0) {
+            payload.newPassword = settingsPasswordInput.value;
+        }
+
+        fetch(serverUrl + '/api/auth/profile', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true'
+            },
+            body: JSON.stringify(payload)
+        }).then(r => r.json()).then(res => {
+            if (res.success) {
+                settingsModalOverlay.classList.add('hidden');
+                // Update local profile UI
+                userColor = payload.color;
+                var profileAvatar = document.querySelector('#user-profile-avatar');
+                if (payload.avatarUrl) {
+                    profileAvatar.style.backgroundImage = 'url(' + payload.avatarUrl + ')';
+                    profileAvatar.style.backgroundColor = 'transparent';
+                    profileAvatar.textContent = '';
+                } else {
+                    profileAvatar.style.backgroundImage = 'none';
+                    profileAvatar.style.backgroundColor = userColor;
+                    profileAvatar.textContent = username[0].toUpperCase();
+                }
+            } else {
+                alert(res.error || 'Failed to update profile');
+            }
+        }).catch(e => console.error(e));
+    });
+}
+
+// ========== ADMIN PANEL ==========
+var adminPanelToggle = document.querySelector('#admin-panel-toggle');
+var adminModalOverlay = document.querySelector('#admin-modal-overlay');
+var adminModalClose = document.querySelector('#admin-modal-close');
+var adminUsersList = document.querySelector('#admin-users-list');
+
+if (adminPanelToggle) {
+    adminPanelToggle.addEventListener('click', loadAdminUsers);
+}
+
+if (adminModalClose) {
+    adminModalClose.addEventListener('click', () => adminModalOverlay.classList.add('hidden'));
+}
+
+function loadAdminUsers() {
+    var serverUrl = window._serverUrl || 'http://localhost:8080';
+    fetch(serverUrl + '/api/auth/users?adminUsername=' + encodeURIComponent(username), {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+    }).then(r => {
+        if (!r.ok) throw new Error('Not authorized or error fetching users');
+        return r.json();
+    }).then(users => {
+        adminUsersList.innerHTML = '';
+        users.forEach(u => {
+            var item = document.createElement('div');
+            item.className = 'admin-user-item';
+
+            var info = document.createElement('div');
+            info.className = 'admin-user-info';
+
+            var avatar = document.createElement('div');
+            avatar.className = 'admin-user-avatar';
+            if (u.avatarUrl) {
+                avatar.style.backgroundImage = 'url(' + u.avatarUrl + ')';
+            } else {
+                avatar.style.backgroundColor = u.color || getAvatarColor(u.username);
+                avatar.textContent = u.username[0].toUpperCase();
+            }
+
+            var name = document.createElement('div');
+            name.className = 'admin-user-name';
+            name.textContent = u.username;
+
+            var role = document.createElement('div');
+            role.className = 'admin-user-role role-' + u.role.toLowerCase();
+            role.textContent = u.role;
+
+            info.appendChild(avatar);
+            info.appendChild(name);
+            info.appendChild(role);
+
+            var actions = document.createElement('div');
+            actions.className = 'admin-user-actions';
+
+            if (u.username !== username) { // Don't let admin modify themselves easily here to prevent lockout
+                if (u.role === 'USER') {
+                    var promoteBtn = document.createElement('button');
+                    promoteBtn.className = 'admin-btn admin-btn-promote';
+                    promoteBtn.textContent = 'Make Mod';
+                    promoteBtn.onclick = () => changeUserRole(u.username, 'MODERATOR');
+                    actions.appendChild(promoteBtn);
+                } else if (u.role === 'MODERATOR') {
+                    var promoteBtn = document.createElement('button');
+                    promoteBtn.className = 'admin-btn admin-btn-promote';
+                    promoteBtn.textContent = 'Make Admin';
+                    promoteBtn.onclick = () => changeUserRole(u.username, 'ADMIN');
+                    actions.appendChild(promoteBtn);
+
+                    var demoteBtn = document.createElement('button');
+                    demoteBtn.className = 'admin-btn admin-btn-demote';
+                    demoteBtn.textContent = 'Demote';
+                    demoteBtn.onclick = () => changeUserRole(u.username, 'USER');
+                    actions.appendChild(demoteBtn);
+                } else if (u.role === 'ADMIN') {
+                    var demoteBtn = document.createElement('button');
+                    demoteBtn.className = 'admin-btn admin-btn-demote';
+                    demoteBtn.textContent = 'Demote Mod';
+                    demoteBtn.onclick = () => changeUserRole(u.username, 'MODERATOR');
+                    actions.appendChild(demoteBtn);
+                }
+
+                var deleteBtn = document.createElement('button');
+                deleteBtn.className = 'admin-btn admin-btn-delete';
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.onclick = () => deleteUser(u.username);
+                actions.appendChild(deleteBtn);
+            }
+
+            item.appendChild(info);
+            item.appendChild(actions);
+            adminUsersList.appendChild(item);
+        });
+        adminModalOverlay.classList.remove('hidden');
+    }).catch(err => {
+        console.error(err);
+        alert('Could not load users. Are you an Admin?');
+    });
+}
+
+function changeUserRole(targetUser, newRole) {
+    if (!confirm(`Are you sure you want to change ${targetUser}'s role to ${newRole}?`)) return;
+    var serverUrl = window._serverUrl || 'http://localhost:8080';
+    fetch(serverUrl + '/api/auth/role', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ username: targetUser, role: newRole, adminUsername: username })
+    }).then(r => r.json()).then(res => {
+        if (res.error) alert(res.error);
+        else loadAdminUsers(); // refresh list
+    }).catch(e => console.error(e));
+}
+
+function deleteUser(targetUser) {
+    if (!confirm(`WARNING: Are you sure you want to completely delete the user '${targetUser}'? This cannot be undone.`)) return;
+    var serverUrl = window._serverUrl || 'http://localhost:8080';
+    fetch(serverUrl + '/api/auth/users/' + encodeURIComponent(targetUser) + '?adminUsername=' + encodeURIComponent(username), {
+        method: 'DELETE',
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+    }).then(r => {
+        if (r.ok) return r.json();
+        throw new Error('Delete failed');
+    }).then(res => {
+        if (res.error) alert(res.error);
+        else loadAdminUsers(); // refresh list
+    }).catch(e => console.error(e));
+}

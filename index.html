@@ -91,10 +91,15 @@
                     </div>
                 </div>
                 <div class="user-profile">
-                    <div class="avatar"></div>
+                    <div class="avatar" id="user-profile-avatar"></div>
                     <div class="user-details">
                         <div class="username" id="display-username">User</div>
                         <div class="status">Online</div>
+                    </div>
+                    <div class="profile-actions">
+                        <div class="action-btn" id="admin-panel-toggle" title="Admin Panel" style="display:none;">🛡️
+                        </div>
+                        <div class="action-btn" id="settings-toggle" title="User Settings">⚙️</div>
                     </div>
                 </div>
             </div>
@@ -130,6 +135,41 @@
                         <div class="edit-modal-buttons">
                             <button class="edit-modal-btn cancel" id="edit-modal-cancel">Cancel</button>
                             <button class="edit-modal-btn save" id="edit-modal-save">Save</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Modal -->
+                <div id="settings-modal-overlay" class="edit-modal-overlay hidden">
+                    <div class="edit-modal settings-modal">
+                        <h3>User Settings</h3>
+                        <div class="settings-avatar-preview" id="settings-avatar-preview"></div>
+                        <label class="settings-label">Upload Custom Avatar:</label>
+                        <input type="file" id="settings-avatar-input" accept="image/*" class="settings-file-input">
+
+                        <label class="settings-label">Custom Nickname Color:</label>
+                        <input type="color" id="settings-color-input" class="settings-color-picker">
+
+                        <label class="settings-label">Change Password (leave blank to keep current):</label>
+                        <input type="password" id="settings-password-input" class="edit-modal-input"
+                            placeholder="New Password">
+
+                        <div class="edit-modal-buttons">
+                            <button class="edit-modal-btn cancel" id="settings-modal-cancel">Cancel</button>
+                            <button class="edit-modal-btn save" id="settings-modal-save">Save Profile</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Panel Modal -->
+                <div id="admin-modal-overlay" class="edit-modal-overlay hidden">
+                    <div class="edit-modal admin-modal">
+                        <h3>Admin Panel: Manage Users</h3>
+                        <div class="admin-users-list" id="admin-users-list">
+                            <!-- Users injected here via JS -->
+                        </div>
+                        <div class="edit-modal-buttons">
+                            <button class="edit-modal-btn cancel" id="admin-modal-close">Close</button>
                         </div>
                     </div>
                 </div>
