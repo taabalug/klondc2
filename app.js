@@ -217,7 +217,7 @@ function onConnected() {
 function subscribeToChannel(channel) {
     if (currentSubscription) {
         // Send a LEAVE event directly to the channel topic (not via sendMessage to avoid saving to DB)
-        stompClient.send("/app/chat.addUser", {}, JSON.stringify({ sender: username, type: 'LEAVE', channel: currentChannel }));
+        stompClient.send("/app/chat.leave", {}, JSON.stringify({ sender: username, type: 'LEAVE', channel: currentChannel }));
         currentSubscription.unsubscribe();
     }
 
