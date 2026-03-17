@@ -64,10 +64,10 @@ html {
 }
 
 /* Update background for dark mode */
-[data-theme="dark"] body,
-[data-theme="dark"] html {
-    background-image: url('https://w.wallhaven.cc/full/wq/wallhaven-wqery7.jpg');
-    /* Darker glassy abstract wallpaper */
+[data-theme="dark"] {
+    background-image: url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop');
+    background-size: cover;
+    background-position: center;
 }
 
 .hidden {
@@ -514,6 +514,11 @@ button.accent:hover {
     outline: none;
 }
 
+#message::placeholder {
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
 .hidden-btn {
     display: none;
 }
@@ -665,5 +670,12 @@ button.accent:hover {
 
     body.members-open .members-sidebar {
         transform: translateX(0);
+    }
+
+    /* Dark mode mobile sidebar backgrounds */
+    [data-theme="dark"] .servers-sidebar,
+    [data-theme="dark"] .channels-sidebar,
+    [data-theme="dark"] .members-sidebar {
+        background: rgba(30, 30, 30, 0.95);
     }
 }

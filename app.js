@@ -17,6 +17,29 @@ var membersToggle = document.querySelector('#members-toggle');
 var themeToggle = document.querySelector('#theme-toggle');
 var mobileOverlay = document.querySelector('#mobile-overlay');
 
+// Global state variables
+var originalTitle = document.title;
+var unreadMessagesCount = 0;
+var isWindowFocused = true;
+var titleBlinkInterval = null;
+
+// Notification Sound (using a common windows-like blip or modern pop via data URI)
+var notificationSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+
+// Track if window is focused
+window.addEventListener('focus', function () {
+    isWindowFocused = true;
+    unreadMessagesCount = 0;
+    if (titleBlinkInterval) {
+        clearInterval(titleBlinkInterval);
+        titleBlinkInterval = null;
+    }
+    document.title = originalTitle;
+});
+window.addEventListener('blur', function () {
+    isWindowFocused = false;
+});
+
 // Theme Toggle Logic
 var isDarkMode = false;
 var loginThemeToggle = document.querySelector('#login-theme-toggle');
@@ -133,8 +156,8 @@ function onConnected() {
 
 function subscribeToChannel(channel) {
     if (currentSubscription) {
-        // Send a LEAVE message to the old channel before un-subscribing 
-        stompClient.send("/app/chat.sendMessage", {}, JSON.stringify({ sender: username, type: 'LEAVE', channel: currentChannel }));
+        // Send a LEAVE event directly to the channel topic (not via sendMessage to avoid saving to DB)
+        stompClient.send("/app/chat.addUser", {}, JSON.stringify({ sender: username, type: 'LEAVE', channel: currentChannel }));
         currentSubscription.unsubscribe();
     }
 
@@ -229,7 +252,7 @@ function onError(error) {
     var div = document.createElement('div');
     div.classList.add('event-message');
     div.textContent = '⚠️ Could not connect to server. Check if backend is running on ' + (serverUrlInput.value.trim() || 'http://localhost:8080');
-    div.style.color = 'var(--brand-color-hover)';
+    div.style.color = '#ED4245';
     messageArea.appendChild(div);
 }
 
@@ -265,7 +288,7 @@ function onMessageReceived(payload) {
         return;
     }
 
-    if (message.channel !== currentChannel) {
+    if (message.channel && message.channel !== currentChannel) {
         return; // Ignore messages from other channels if they somehow arrive
     }
 
@@ -280,6 +303,20 @@ function onMessageReceived(payload) {
         eventElement.innerHTML = `← <strong>${message.sender}</strong> has left the channel.`;
         messageArea.appendChild(eventElement);
     } else {
+        // Play notification sound and flash title if window not focused
+        if (!isWindowFocused && message.sender !== username) {
+            // Play sound with catch block in case browser blocks autoplay
+            notificationSound.play().catch(e => console.log("Audio play blocked by browser."));
+
+            unreadMessagesCount++;
+            if (!titleBlinkInterval) {
+                titleBlinkInterval = setInterval(function () {
+                    document.title = document.title === originalTitle ?
+                        `(${unreadMessagesCount}) New messages!` : originalTitle;
+                }, 1000);
+            }
+        }
+
         // Chat Message
         var messageElement = document.createElement('div');
         messageElement.classList.add('message-wrapper');
@@ -288,7 +325,7 @@ function onMessageReceived(payload) {
         var avatarElement = document.createElement('div');
         avatarElement.classList.add('message-avatar');
         avatarElement.style.backgroundColor = getAvatarColor(message.sender);
-        avatarElement.textContent = message.sender[0].toUpperCase();
+        avatarElement.textContent = message.sender ? message.sender[0].toUpperCase() : '?';
 
         // Content Wrapper
         var contentWrapperElement = document.createElement('div');
@@ -305,8 +342,18 @@ function onMessageReceived(payload) {
 
         var timeElement = document.createElement('span');
         timeElement.classList.add('message-time');
-        var now = new Date();
-        timeElement.textContent = `Today at ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+        // Use server timestamp if available, else local time
+        var msgTimeText = "";
+        if (message.timestamp) {
+            // Example message.timestamp: "2023-10-27T14:32:00.123"
+            var dateObj = new Date(message.timestamp);
+            msgTimeText = `Today at ${dateObj.getHours().toString().padStart(2, '0')}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
+        } else {
+            var now = new Date();
+            msgTimeText = `Today at ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        }
+        timeElement.textContent = msgTimeText;
 
         headerElement.appendChild(nameElement);
         headerElement.appendChild(timeElement);
@@ -351,31 +398,68 @@ function getAvatarColor(messageSender) {
 
 var imageUpload = document.querySelector('#image-upload');
 
-imageUpload.addEventListener('change', function (e) {
-    var file = e.target.files[0];
-    if (file && stompClient) {
-        // Validate file size (optional, prevent browser crash)
-        if (file.size > 5 * 1024 * 1024) {
-            alert("File is too large! Maximum 5MB allowed.");
-            imageUpload.value = '';
-            return;
-        }
+function resizeImageAndSend(file) {
+    if (!file.type.match(/image.*/)) return;
 
-        var reader = new FileReader();
-        reader.onload = function (event) {
-            var base64String = event.target.result;
+    var reader = new FileReader();
+    reader.onload = function (e) {
+        var img = new Image();
+        img.onload = function () {
+            var canvas = document.createElement('canvas');
+            var ctx = canvas.getContext('2d');
+
+            // Limit image dimensions to 800x800 to prevent WebSockets from crashing
+            var MAX_WIDTH = 800;
+            var MAX_HEIGHT = 800;
+            var width = img.width;
+            var height = img.height;
+
+            if (width > height) {
+                if (width > MAX_WIDTH) {
+                    height *= MAX_WIDTH / width;
+                    width = MAX_WIDTH;
+                }
+            } else {
+                if (height > MAX_HEIGHT) {
+                    width *= MAX_HEIGHT / height;
+                    height = MAX_HEIGHT;
+                }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Compress image to JPEG (quality 0.7) to keep payload < 64KB
+            var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
             var chatMessage = {
                 sender: username,
-                content: base64String,
+                content: dataUrl,
                 type: 'IMAGE',
                 channel: currentChannel
             };
             stompClient.send("/app/chat.sendMessage", {}, JSON.stringify(chatMessage));
         };
-        reader.readAsDataURL(file);
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+imageUpload.addEventListener('change', function (e) {
+    var file = e.target.files[0];
+    if (file && stompClient) {
+        resizeImageAndSend(file);
     }
     imageUpload.value = '';
 });
+
+var addServerBtn = document.querySelector('.add-server');
+if (addServerBtn) {
+    addServerBtn.addEventListener('click', function () {
+        alert("Wielu serwerów jeszcze nie obsługujemy! Funkcja tworzenia nowych serwerów pojawi się w kolejnej aktualizacji.");
+    });
+}
 
 usernameForm.addEventListener('submit', connect, true)
 messageForm.addEventListener('submit', sendMessage, true)
