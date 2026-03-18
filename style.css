@@ -780,7 +780,7 @@ button.accent:hover {
 }
 
 .edit-modal {
-    background: var(--channels-bg);
+    background: var(--input-bg);
     border: 1px solid var(--aero-border);
     border-radius: 10px;
     padding: 20px 24px;

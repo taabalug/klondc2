@@ -400,15 +400,25 @@ function onMessageReceived(payload) {
     }
 
     if (message.type === 'JOIN') {
-        var eventElement = document.createElement('div');
-        eventElement.classList.add('event-message');
-        eventElement.innerHTML = `→ <strong>${message.sender}</strong> has joined the channel!`;
-        messageArea.appendChild(eventElement);
+        var joinElement = document.createElement('div');
+        joinElement.classList.add('event-message');
+        var joinArrow = document.createTextNode('→ ');
+        var joinBold = document.createElement('strong');
+        joinBold.textContent = message.sender;
+        joinElement.appendChild(joinArrow);
+        joinElement.appendChild(joinBold);
+        joinElement.appendChild(document.createTextNode(' has joined the channel!'));
+        messageArea.appendChild(joinElement);
     } else if (message.type === 'LEAVE') {
-        var eventElement = document.createElement('div');
-        eventElement.classList.add('event-message');
-        eventElement.innerHTML = `← <strong>${message.sender}</strong> has left the channel.`;
-        messageArea.appendChild(eventElement);
+        var leaveElement = document.createElement('div');
+        leaveElement.classList.add('event-message');
+        var leaveArrow = document.createTextNode('← ');
+        var leaveBold = document.createElement('strong');
+        leaveBold.textContent = message.sender;
+        leaveElement.appendChild(leaveArrow);
+        leaveElement.appendChild(leaveBold);
+        leaveElement.appendChild(document.createTextNode(' has left the channel.'));
+        messageArea.appendChild(leaveElement);
     } else {
         // Play notification sound and flash title if window not focused
         if (!isWindowFocused && message.sender !== username) {
