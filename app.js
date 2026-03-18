@@ -97,7 +97,10 @@ var stompClient = null;
 var currentSubscription = null;
 var username = null;
 var userRole = 'USER';
-var userColor = '';
+var currentServerId = null;
+var currentServerName = '';
+var userServers = [];
+
 var currentChannel = 'general';
 var knownChannels = ['general'];
 var authMode = 'login'; // 'login' or 'register'
@@ -231,26 +234,86 @@ function onConnected() {
     // Subscribe to public channel for global events
     stompClient.subscribe('/topic/public', onMessageReceived);
 
-    // Fetch existing channels
-    fetch(serverUrl + '/api/channels', { headers: headers })
+    // Fetch user's servers
+    fetch(serverUrl + '/api/servers/user/' + encodeURIComponent(username), { headers: headers })
+        .then(response => response.json())
+        .then(servers => {
+            userServers = servers;
+            renderServersSidebar();
+
+            if (servers.length === 0) {
+                // User has no servers, show empty state
+                document.getElementById('no-server-state').style.display = 'flex';
+                document.querySelector('.chat-header').style.display = 'none';
+                document.querySelector('.chat-history').style.display = 'none';
+                document.querySelector('.chat-input-wrapper').style.display = 'none';
+                document.querySelector('.channels-sidebar').style.display = 'none';
+                document.querySelector('.members-sidebar').style.display = 'none';
+            } else {
+                // Load first server
+                switchServer(servers[0].id, servers[0].name);
+            }
+        })
+        .catch(error => console.error('Error fetching servers:', error));
+}
+
+function switchServer(serverId, serverName) {
+    currentServerId = serverId;
+    currentServerName = serverName;
+
+    // Show UI
+    document.getElementById('no-server-state').style.display = 'none';
+    document.querySelector('.chat-header').style.display = 'flex';
+    document.querySelector('.chat-history').style.display = 'flex';
+    document.querySelector('.chat-input-wrapper').style.display = 'block';
+    // Mobile responsiveness checks...
+    if (window.innerWidth > 768) {
+        document.querySelector('.channels-sidebar').style.display = 'flex';
+        document.querySelector('.members-sidebar').style.display = 'flex';
+    }
+
+    // Unsubscribe from previous channels if any
+    if (currentSubscription) {
+        stompClient.send("/app/chat.leave", {}, JSON.stringify({ sender: username, type: 'LEAVE', channel: currentChannel, serverId: currentServerId }));
+        currentSubscription.unsubscribe();
+        currentSubscription = null;
+    }
+
+    // Set header
+    document.querySelector('.channels-header h2').textContent = serverName;
+
+    document.querySelectorAll('.servers-sidebar .server-icon.server-item').forEach(el => el.classList.remove('active'));
+    let activeIcon = document.querySelector(`.servers-sidebar .server-icon.server-item[data-id="${serverId}"]`);
+    if(activeIcon) activeIcon.classList.add('active');
+
+    // Fetch existing channels for THIS server
+    var serverUrl = serverUrlInput.value.trim() || 'http://localhost:8080';
+    var headers = { 'ngrok-skip-browser-warning': 'true' };
+    
+    knownChannels = ['general']; // Reset channels list for the new server
+    fetch(serverUrl + '/api/channels/' + serverId, { headers: headers })
         .then(response => response.json())
         .then(channels => {
+            document.getElementById('channels-list-container').innerHTML = '';
+            appendChannelToUI('general'); // Always add general first
+            
             channels.forEach(chan => {
                 if (chan && !knownChannels.includes(chan) && chan !== 'public') {
                     knownChannels.push(chan);
                     appendChannelToUI(chan);
                 }
             });
+            subscribeToChannel('general');
         })
         .catch(error => console.error('Error fetching channels:', error));
-
-    subscribeToChannel(currentChannel);
 }
 
 function subscribeToChannel(channel) {
+    if(!currentServerId) return;
+
     if (currentSubscription) {
-        // Send a LEAVE event directly to the channel topic (not via sendMessage to avoid saving to DB)
-        stompClient.send("/app/chat.leave", {}, JSON.stringify({ sender: username, type: 'LEAVE', channel: currentChannel }));
+        // Send a LEAVE event directly to the channel topic
+        stompClient.send("/app/chat.leave", {}, JSON.stringify({ sender: username, type: 'LEAVE', channel: currentChannel, serverId: currentServerId }));
         currentSubscription.unsubscribe();
     }
 
@@ -267,11 +330,11 @@ function subscribeToChannel(channel) {
     `;
 
     // Subscribe to the new Channel Topic
-    currentSubscription = stompClient.subscribe('/topic/' + channel, onMessageReceived);
+    currentSubscription = stompClient.subscribe('/topic/' + currentServerId + '/' + channel, onMessageReceived);
 
     // Fetch history from database
     var serverUrl = serverUrlInput.value.trim() || 'http://localhost:8080';
-    fetch(serverUrl + '/api/messages/' + channel, {
+    fetch(serverUrl + '/api/messages/' + currentServerId + '/' + channel, {
         headers: {
             'ngrok-skip-browser-warning': 'true'
         }
@@ -288,7 +351,7 @@ function subscribeToChannel(channel) {
     // Tell server you joined this channel (Optional now, but we'll keep it)
     stompClient.send("/app/chat.addUser",
         {},
-        JSON.stringify({ sender: username, type: 'JOIN', channel: channel })
+        JSON.stringify({ sender: username, type: 'JOIN', channel: channel, serverId: currentServerId })
     );
 }
 
@@ -1166,4 +1229,103 @@ function deleteUser(targetUser) {
         if (res.error) alert(res.error);
         else loadAdminUsers(); // refresh list
     }).catch(e => console.error(e));
+}
+
+// ========== MULTI-SERVER LOGIC ==========
+var createServerModal = document.querySelector('#create-server-modal');
+var createServerNameInput = document.querySelector('#create-server-name-input');
+var createServerSubmit = document.querySelector('#create-server-submit');
+var createServerCancel = document.querySelector('#create-server-cancel');
+
+var joinServerModal = document.querySelector('#join-server-modal');
+var joinServerCodeInput = document.querySelector('#join-server-code-input');
+var joinServerSubmit = document.querySelector('#join-server-submit');
+var joinServerCancel = document.querySelector('#join-server-cancel');
+var joinServerSwitch = document.querySelector('#join-server-switch');
+
+var noServerAddBtn = document.querySelector('#no-server-add-btn');
+
+// Make it global so HTML onclick can reach it
+window.openCreateModal = function() {
+    createServerModal.classList.remove('hidden');
+    joinServerModal.classList.add('hidden');
+};
+
+function openJoinModal() {
+    joinServerModal.classList.remove('hidden');
+    createServerModal.classList.add('hidden');
+}
+
+if(noServerAddBtn) noServerAddBtn.addEventListener('click', window.openCreateModal);
+if(joinServerSwitch) joinServerSwitch.addEventListener('click', openJoinModal);
+
+if(createServerCancel) createServerCancel.addEventListener('click', () => createServerModal.classList.add('hidden'));
+if(joinServerCancel) joinServerCancel.addEventListener('click', () => joinServerModal.classList.add('hidden'));
+
+if(createServerSubmit) {
+    createServerSubmit.addEventListener('click', function() {
+        var sName = createServerNameInput.value.trim();
+        if(!sName) return;
+        var serverUrl = window._serverUrl || 'http://localhost:8080';
+        fetch(serverUrl + '/api/servers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+            body: JSON.stringify({ name: sName, username: username })
+        }).then(r => r.json()).then(res => {
+            if(res.error) alert(res.error);
+            else {
+                userServers.push(res);
+                createServerModal.classList.add('hidden');
+                renderServersSidebar();
+                switchServer(res.id, res.name);
+            }
+        });
+    });
+}
+
+if(joinServerSubmit) {
+    joinServerSubmit.addEventListener('click', function() {
+        var code = joinServerCodeInput.value.trim();
+        if(!code) return;
+        var serverUrl = window._serverUrl || 'http://localhost:8080';
+        fetch(serverUrl + '/api/servers/join/' + encodeURIComponent(code), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+            body: JSON.stringify({ username: username })
+        }).then(r => r.json()).then(res => {
+            if(res.error) alert(res.error);
+            else {
+                if(!userServers.find(s => s.id === res.id)) {
+                    userServers.push(res);
+                }
+                joinServerModal.classList.add('hidden');
+                renderServersSidebar();
+                switchServer(res.id, res.name);
+            }
+        });
+    });
+}
+
+function renderServersSidebar() {
+    var sidebar = document.querySelector('.servers-sidebar');
+    if(!sidebar) return;
+    
+    sidebar.innerHTML = `
+        <div class="server-icon add-server" onclick="openCreateModal()" title="Add a Server">
+            <span>+</span>
+        </div>
+        <div class="server-separator"></div>
+    `;
+    
+    userServers.forEach(s => {
+        var div = document.createElement('div');
+        div.className = 'server-icon server-item';
+        if (s.id === currentServerId) div.classList.add('active');
+        div.setAttribute('data-id', s.id);
+        // Show invite code on hover so users can share it!
+        div.title = s.name + (s.inviteCode ? ' (Invite: ' + s.inviteCode + ')' : '');
+        div.innerHTML = `<span>${s.name.charAt(0).toUpperCase()}</span>`;
+        div.onclick = () => switchServer(s.id, s.name);
+        sidebar.appendChild(div);
+    });
 }

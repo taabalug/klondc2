@@ -174,6 +174,45 @@
                     </div>
                 </div>
 
+                <!-- Create Server Modal -->
+                <div id="create-server-modal" class="edit-modal-overlay hidden">
+                    <div class="edit-modal">
+                        <h3>Create Your Server</h3>
+                        <p style="color:var(--text-muted); font-size:14px; margin-bottom:15px;">Your server is where you and your friends hang out. Make yours and start talking.</p>
+                        <label class="settings-label">SERVER NAME</label>
+                        <input type="text" id="create-server-name-input" class="edit-modal-input" placeholder="My Awesome Server">
+                        <div class="edit-modal-buttons">
+                            <button class="edit-modal-btn cancel" id="create-server-cancel">Back</button>
+                            <button class="edit-modal-btn save" id="create-server-submit">Create</button>
+                        </div>
+                        <div style="margin-top:15px; text-align:center;">
+                            <a href="#" id="join-server-switch" style="color:#00a8fc; font-size:14px; text-decoration:none;">Have an invite already? Join a Server</a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Join Server Modal -->
+                <div id="join-server-modal" class="edit-modal-overlay hidden">
+                    <div class="edit-modal">
+                        <h3>Join a Server</h3>
+                        <p style="color:var(--text-muted); font-size:14px; margin-bottom:15px;">Enter an invite code below to join an existing server.</p>
+                        <label class="settings-label">INVITE CODE</label>
+                        <input type="text" id="join-server-code-input" class="edit-modal-input" placeholder="e.g. A1B2C3" style="text-transform: uppercase;">
+                        <div class="edit-modal-buttons">
+                            <button class="edit-modal-btn cancel" id="join-server-cancel">Back</button>
+                            <button class="edit-modal-btn save" id="join-server-submit">Join Server</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Empty State (No Server Selected) -->
+                <div id="no-server-state" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; background: var(--chat-bg); position: absolute; top:0; left:0; z-index: 10; padding:20px; text-align:center;">
+                    <img src="https://discord.com/assets/2b53eef641b9d4791ea0.svg" alt="Wumpus" style="max-width:300px; margin-bottom:30px; opacity:0.8;">
+                    <h2 style="color: var(--text-normal); margin-bottom:10px;">Welcome to Discord Clone!</h2>
+                    <p style="color: var(--text-muted); max-width:400px; margin-bottom:30px;">You are currently not in any servers. Create your own server to invite friends, or join an existing one using an invite code.</p>
+                    <button class="accent username-submit" id="no-server-add-btn" style="width:auto; padding:15px 30px;">+ Add a Server</button>
+                </div>
+
                 <div class="chat-history" id="messageArea">
                     <!-- Messages will appear here -->
                     <div class="welcome-message">
